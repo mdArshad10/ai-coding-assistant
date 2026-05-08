@@ -137,6 +137,10 @@ const requiredConfirmation = async (
         const answer = await prompt.run();
         if(answer == yesChoice){
             return {approved:true}
+        }else if(answer == yesRememberChoice){
+            if(settings){
+                await settings.addCommandToAllowedList(target);
+            }
         }
     } catch (error) {
         
