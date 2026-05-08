@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import { success } from 'zod';
 import { readFile } from '../tools/fileSystem';
 import { getGlobalSetting } from '../config/signleton';
+import { Select } from "enquirer";
 
 interface SafetyContext {
     projectRoot:string;
@@ -78,7 +79,68 @@ const requiredConfirmation = async (
   target: string,
   details?: string,
 ) => {
-  
+  const settings = getGlobalSetting();
+  if(settings){
+    if(operation =="execute"){
+        if(settings.isCommandAllowed(target)){
+            return {approval:true}
+        }
+    }else{
+        if(settings.isFileAllowed(target,operation)){
+            return { approval: true };
+        }
+    }
+  }
+
+  const isInteractive = process.stdin.isTTY;
+  if(isInteractive){
+    const settingsObj = settings?.getSettings();
+    const autoConfirm = settingsObj?.preferences.autoConfirmNonInteractive || false;
+
+    const allowed = operation ==="execute" ? settings?.isCommandAllowed(target) :settings?.isFileAllowed(target,operation) ;
+
+    if(autoConfirm || allowed){
+        if(allowed){
+            console.log(`Auto-approving ${operation} operation on ${target} based on allowedList settings`);
+        }else{
+            console.log(`Auto-approving ${operation} operation on ${target} in  non-interactive mode`);
+            
+        }
+        return {approved:true}
+    }
+
+    return { approved: false };
+  } 
+
+  const settingsObj = settings?.getSettings();
+  const confirmationMode = settingsObj?.preferences.confirmationMode ?? "manual";
+  if(confirmationMode =="auto"){
+    console.log(`Auto approving ${operation} on target ${target} based on settings.`);
+  }
+
+  const targetType= operation =="execute" ?"command":"file";
+  const yesChoice = "1) Yes";
+  const yesRememberChoice = `2) Yes, and remember this choice for the ${targetType}`;
+  const noChoice = `3) No`;
+
+  const prompt = new Select({
+    name: "confirm",
+    message: `Allow ${operation} on ${target}`,
+    choices: [yesChoice, yesRememberChoice, noChoice],
+  });
+
+    if(details){
+            // display the detail in terminal
+    }
+
+    try {
+        const answer = await prompt.run();
+        if(answer == yesChoice){
+            return {approved:true}
+        }
+    } catch (error) {
+        
+    }
 };
 
 const fileExists = async(filePath:string)=>{
