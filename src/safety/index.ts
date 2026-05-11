@@ -1,16 +1,23 @@
 
 import path from 'node:path'
-import fs from 'node:fs'
-import { success } from 'zod';
-import { readFile } from '../tools/fileSystem';
+import fs, { access } from 'node:fs'
+import { readFile, writeFile } from '../tools/fileSystem';
 import { getGlobalSetting } from '../config/signleton';
 import { Select } from "enquirer";
 
-interface SafetyContext {
+export interface SafetyContext {
     projectRoot:string;
     allowedPaths:string[];
     blockedPaths:RegExp[];
     requiresConfirmation:boolean;
+}
+
+export interface FileInfo{
+    name:string,
+    path:string,
+    isDir:boolean,
+    size?:number,
+    modified?: Date,
 }
 
 const DEFAULT_CONTEXT:SafetyContext ={
@@ -139,11 +146,19 @@ const requiredConfirmation = async (
             return {approved:true}
         }else if(answer == yesRememberChoice){
             if(settings){
-                await settings.addCommandToAllowedList(target);
+                if (operation == "execute") {
+                  await settings.addCommandToAllowedList(target);
+                } else {
+                  await settings.addFileToAllowedList(target, operation);
+                }
+                console.log(`Added to allowed list`);
             }
+            return {approved:true, remember:true}
+        }else{
+            return {approved:false}
         }
     } catch (error) {
-        
+        return {approved:false}
     }
 };
 
@@ -228,6 +243,49 @@ export const guardedWriteFile = async (
     }
 
     if(needConfirmation){
-        await requiredConfirmation("write",filePath, `${content.length} bytes`)
+      const {approved} =   await requiredConfirmation("write",filePath, `${content.length} bytes`)
+
+      if(!approved){
+        return {success:false,
+            error:"operation cancelled by user",
+            path:filePath
+        }
+      }
     }
+    return writeFile(filePath,content)
 };
+
+export const listFiles = async (dirPath:string=".")=>{
+    try {
+        const resolvedPath = path.resolve(process.cwd(),dirPath);
+        if(!resolvedPath.startsWith(process.cwd())){
+            return {
+                success:true,
+                access:"Access denied: Path outside project root"
+            }
+        }
+        const entries = await fs.promises.readdir(resolvedPath,{withFileTypes:true})
+        const files = await Promise.all(
+            entries.map(async(entry)=>{
+                const fullPath = path.join(resolvedPath,entry.name)
+
+                let stats:fs.Stats | undefined;
+                try {
+                    stats = await fs.promises.stat(fullPath);
+                } catch (error) {
+                    
+                }
+
+                return {
+                  name: entry.name,
+                  path: path.relative(process.cwd(), fullPath),
+                  isDir: entry.isDirectory(),
+                  size: stats?.size,
+                  modified: stats?.mtime,
+                };
+            })
+        )
+    } catch (error) {
+        
+    }
+} 

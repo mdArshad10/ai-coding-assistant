@@ -35,12 +35,16 @@ const DEFAULT_SETTINGS:Settings = {
 export class SettingManages {
   private settings: Settings;
   private dirty: boolean = false;
-  private settingsPath:string;
+  private settingsPath: string;
 
   constructor(projectRoot?: string) {
     const root = projectRoot || process.cwd();
     this.settings = { ...DEFAULT_SETTINGS };
-    this.settingsPath = path.resolve(root,'aicodingagent','settings.local.json')
+    this.settingsPath = path.resolve(
+      root,
+      "aicodingagent",
+      "settings.local.json",
+    );
   }
 
   getSettings(): Settings {
@@ -56,7 +60,7 @@ export class SettingManages {
   }
 
   isFileAllowed(filepath: string, operation: "write" | "delete") {
-    const rules = this.settings.allowList.files;
+    const rules = this.settings?.allowList.files;
     return rules.some((rule: AllowListRule) => {
       if (
         rule.path === filepath &&
@@ -85,18 +89,30 @@ export class SettingManages {
     await this.save();
   }
 
+  async addFileToAllowedList(filepath: string, operation: "write" | "delete") {
+    const exists = this.settings.allowList.files.some((r)=>r.path && r.operation== operation)
+    if(exists) return;
+    this.settings.allowList.files.push({
+      path:filepath,
+      operation,
+      addedAt:Date.now()
+    })
+    this.dirty=true;
+    await this.save();
+  }
+
   async save() {
     if (!this.dirty) return;
     try {
       await this.ensureDirectory();
       const tempPath = `${this.settingsPath}.tmp`;
-      const data = JSON.stringify(this.settings, null,2);
-    
-      await fsp.writeFile(tempPath,data,'utf-8');
-      await fsp.rename(tempPath,this.settingsPath);
+      const data = JSON.stringify(this.settings, null, 2);
+
+      await fsp.writeFile(tempPath, data, "utf-8");
+      await fsp.rename(tempPath, this.settingsPath);
       this.dirty = false;
     } catch (error) {
-        console.log(`Error to save setting`);
+      console.log(`Error to save setting`);
     }
   }
 
